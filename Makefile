@@ -52,6 +52,10 @@ utillib.o: utillib.c
 clean:
 	rm -f $(PROGS) utillib.o
 
+test: all
+	./raw2pnm -x4044 -y3042 -s5056 -f0x41414270 ../ddo_tools-camera_tools/raw_image/frame-000002.bin test.npm
+	convert -quality 75 test.npm test.jpg
+
 .PHONY: release
 release:
 	$(MAKE) clean

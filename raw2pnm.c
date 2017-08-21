@@ -379,11 +379,25 @@ static inline unsigned int get_word(unsigned char *src, int bpp)
 	return 0;
 }
 
+static inline unsigned int get_packed_word(unsigned char *src, int x)
+{
+	int val = 0;
+	int shift = 2;
+	int xoff = x % 4;
+	int bitoff = xoff * 2;
+
+	//printf("off %d, %d\n", xoff, bitoff);
+	val = src[0] << shift | (src[4-xoff] && (0x3 << bitoff) >> bitoff);
+	//printf("val 0x%x\n", val);
+	return val;
+}
+
+
 /* Return 24 bits-per-pixel RGB image */
 static int convert(void *in_buffer, int in_size, int width, int height, int stride, __u32 format, void *out_buffer)
 {
 	static const int dbpp = 3;
-	int y, x, r, g, b, bpp, shift;
+	int y, x, r, g, b, bpp, shift, g1, r1, b1;
 	int oddrow, oddpix, initrow, initpix, lumaofs, chromaord, subsample;
 	unsigned char *src = NULL, *dst = NULL;
 	unsigned char *s, *u;
@@ -680,6 +694,70 @@ static int convert(void *in_buffer, int in_size, int width, int height, int stri
 				d1 += dbpp;
 				oddpix ^= 1;
 			}
+			s += stride;
+			d += dstride;
+			oddrow ^= 1;
+		}
+		break;
+	case V4L2_PIX_FMT_SBGGR10P:		/* 2 bytes per pixel, little endian */
+	case V4L2_PIX_FMT_SGBRG10P:
+	case V4L2_PIX_FMT_SRGGB10P:
+	case V4L2_PIX_FMT_SGRBG10P:
+		if (format == V4L2_PIX_FMT_SBGGR10P ||
+		    format == V4L2_PIX_FMT_SBGGR12P ||
+		    format == V4L2_PIX_FMT_SBGGR14P) { initrow = 1; initpix = 0; } else
+		if (format == V4L2_PIX_FMT_SGBRG10P ||
+		    format == V4L2_PIX_FMT_SGBRG12P ||
+		    format == V4L2_PIX_FMT_SGBRG14P) { initrow = 1; initpix = 1; } else
+		if (format == V4L2_PIX_FMT_SRGGB10P ||
+		    format == V4L2_PIX_FMT_SRGGB12P ||
+		    format == V4L2_PIX_FMT_SRGGB14P) { initrow = 0; initpix = 1; } else
+		if (format == V4L2_PIX_FMT_SGRBG10P ||
+		    format == V4L2_PIX_FMT_SGRBG12P ||
+		    format == V4L2_PIX_FMT_SGRBG14P) { initrow = 0; initpix = 0; }
+		bpp = 2;	/* 10 bits per pixel */
+		shift = 2;
+		if (stride <= 0) stride = width / 4 * 5;
+		printf("stride %d\n", stride);
+		s = src = duplicate_buffer(in_buffer, in_size, stride * height);
+		r = g = b = r1 = g1 = b1 = 0;
+		oddrow = initrow;
+		for (y = 0; y < height; y++) {
+			unsigned char *s1 = s;
+			unsigned char *d1 = d;
+			oddpix = initpix;
+			for (x = 0; x < width; x++) {
+				/* packed raw sRGB / Bayer formats with 10 bits
+				per sample. Every four consecutive samples are
+				packed into 5 bytes. Each of the first 4 bytes
+				contain the 8 high order bits of the pixels, and
+				the 5th byte contains the 2 least significants
+				bits of each pixel, in the same order.
+				*/
+				if (!oddrow) {
+					if (!oddpix) g = get_packed_word(s1, x);
+					if ( oddpix) r = get_packed_word(s1, x);
+					if (!oddpix && y > 0) b = get_packed_word(s1 - stride, x);
+				} else {
+					if (!oddpix) b = get_packed_word(s1, x);
+					if ( oddpix) g = get_packed_word(s1, x);
+					if ( oddpix && y > 0) r = get_packed_word(s1 - stride, x);
+				}
+				//printf("%d,%d 0x%.4x 0x%.4x 0x%.4x %d\n", y,x,r,g,b, oddpix);
+
+				d1[0] = r >> shift;
+				d1[1] = g >> shift;
+				d1[2] = b >> shift;
+				s1 += 1;
+				/* jump over every 5th byte to skip the low part data */
+				if (x % 4 == 3)
+					s1 += 1;
+				d1 += dbpp;
+				oddpix ^= 1;
+				//if (x > 10)
+				//	return -1;
+			}
+			//printf("s1 %d vs. %d\n", width, s1-s);
 			s += stride;
 			d += dstride;
 			oddrow ^= 1;
