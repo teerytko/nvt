@@ -16,7 +16,7 @@
 # CC=arm-linux-gnueabi-gcc
 CC=gcc
 OPT = -Wall -m32 -static -g -I.
-PROGS = v4l2n v4l2n-example raw2pnm pnm2raw yuv2yuv pnm2yuv txt2raw pnm2txt
+PROGS = v4l2n v4l2n-example raw2pnm pnm2raw yuv2yuv pnm2yuv txt2raw pnm2txt raw2vec
 
 .PHONY: all clean
 all: $(PROGS)
@@ -29,6 +29,9 @@ v4l2n-example: v4l2n
 	$(CC) $(OPT) $@.c -o $@ libv4l2n.o
 
 raw2pnm: raw2pnm.c extradefs.h
+	$(CC) $(OPT) $@.c -o $@
+
+raw2vec: raw2vec.c extradefs.h
 	$(CC) $(OPT) $@.c -o $@
 
 pnm2raw: pnm2raw.c utillib.o
@@ -52,9 +55,14 @@ utillib.o: utillib.c
 clean:
 	rm -f $(PROGS) utillib.o
 
-test: all
-	./raw2pnm -x4044 -y3042 -s5056 -f0x41414270 ../ddo_tools-camera_tools/raw_image/frame-000002.bin test.npm
-	convert -quality 75 test.npm test.jpg
+testraw: all
+	./raw2pnm -x3280 -y2464 -s4160 -fSGRBG10P frame-000005.bin test.pnm
+	convert -quality 75 test.pnm test.jpg
+
+testvec: all
+	./raw2vec bd 3264 2464 frame-000004.bin test.vec
+	./raw2pnm -x3264 -y2464 -fSGRBG10 test.vec test.pnm
+	# convert -quality 75 test.pnm test.jpg
 
 .PHONY: release
 release:
